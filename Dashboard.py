@@ -1,0 +1,361 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import streamlit as st
+
+DATA_DIR = Path(__file__).resolve().parent / "Data" / "Processed"
+
+
+@st.cache_data(show_spinner=False)
+def load_main_data() -> pd.DataFrame:
+    path = DATA_DIR / "all_data_dashboard.csv"
+    df = pd.read_csv(path, low_memory=False)
+
+    df["order_purchase_timestamp"] = pd.to_datetime(df.get("order_purchase_timestamp"), errors="coerce") # type: ignore
+    df["order_delivered_customer_date"] = pd.to_datetime(df.get("order_delivered_customer_date"), errors="coerce") # type: ignore
+    df["order_estimated_delivery_date"] = pd.to_datetime(df.get("order_estimated_delivery_date"), errors="coerce") # type: ignore
+
+    numeric_cols = [
+        "price",
+        "freight_value",
+        "qty",
+        "total_price",
+        "review_score_x",
+        "review_score_y",
+        "on_time",
+        "diff_days",
+        "shipping_duration",
+        "estimated_duration",
+    ]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if "review_score" not in df.columns:
+        if "review_score_x" in df.columns and "review_score_y" in df.columns:
+            df["review_score"] = df["review_score_x"].fillna(df["review_score_y"])
+        elif "review_score_x" in df.columns:
+            df["review_score"] = df["review_score_x"]
+        elif "review_score_y" in df.columns:
+            df["review_score"] = df["review_score_y"]
+
+    if "total_price" not in df.columns and {"price", "qty"}.issubset(df.columns):
+        df["total_price"] = df["price"] * df["qty"]
+
+    df["purchase_date"] = df["order_purchase_timestamp"].dt.date
+    df["purchase_month"] = (
+        df["order_purchase_timestamp"].dt.to_period("M").dt.to_timestamp()
+    )
+
+    return df
+
+
+@st.cache_data(show_spinner=False)
+def load_sales_by_category() -> pd.DataFrame:
+    path = DATA_DIR / "sales_by_category.csv"
+    df = pd.read_csv(path)
+    for col in ["price", "qty", "freight_value", "review_score_y"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+@st.cache_data(show_spinner=False)
+def load_sales_by_state() -> pd.DataFrame:
+    path = DATA_DIR / "sales_by_state.csv"
+    df = pd.read_csv(path)
+    if "price" in df.columns:
+        df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    return df
+
+
+@st.cache_data(show_spinner=False)
+def load_rfm_segments() -> pd.DataFrame:
+    path = DATA_DIR / "rfm_segments.csv"
+    df = pd.read_csv(path)
+    return df
+
+
+def filter_main_data(df: pd.DataFrame) -> pd.DataFrame:
+    df_filtered = df.copy()
+
+    min_date = df_filtered["purchase_date"].min()
+    max_date = df_filtered["purchase_date"].max()
+    if pd.isna(min_date) or pd.isna(max_date):
+        return df_filtered
+
+    with st.sidebar:
+        st.header("Filters")
+        date_range = st.date_input("Purchase date range", (min_date, max_date))
+
+        status_options = sorted(
+            [status for status in df_filtered["order_status"].dropna().unique()]
+        )
+        status_selected = st.multiselect(
+            "Order status",
+            status_options,
+            default=status_options,
+        )
+
+        state_options = sorted(
+            [state for state in df_filtered["customer_state"].dropna().unique()]
+        )
+        state_selected = st.multiselect(
+            "Customer state",
+            state_options,
+            default=state_options,
+        )
+
+        segment_options = sorted(
+            [segment for segment in df_filtered["customer_segment"].dropna().unique()]
+        )
+        segment_selected = st.multiselect(
+            "Customer segment",
+            segment_options,
+            default=segment_options,
+        )
+
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+        df_filtered = df_filtered[
+            (df_filtered["purchase_date"] >= start_date)
+            & (df_filtered["purchase_date"] <= end_date)
+        ]
+
+    if status_selected:
+        df_filtered = df_filtered[df_filtered["order_status"].isin(status_selected)]
+
+    if state_selected:
+        df_filtered = df_filtered[df_filtered["customer_state"].isin(state_selected)]
+
+    if segment_selected:
+        df_filtered = df_filtered[
+            df_filtered["customer_segment"].isin(segment_selected)
+        ]
+
+    return df_filtered
+
+
+def plot_time_series(df: pd.DataFrame) -> None:
+    monthly = (
+        df.dropna(subset=["purchase_month"])
+        .groupby("purchase_month")["order_id"]
+        .nunique()
+        .reset_index(name="orders")
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.lineplot(data=monthly, x="purchase_month", y="orders", marker="o", ax=ax)
+    ax.set_title("Orders Over Time")
+    ax.set_xlabel("Month")
+    ax.set_ylabel("Orders")
+    ax.grid(axis="y", alpha=0.3)
+    st.pyplot(fig, clear_figure=True)
+
+
+def plot_top_categories(df: pd.DataFrame) -> None:
+    category_col = (
+        "product_category_name_english"
+        if "product_category_name_english" in df.columns
+        else "product_category_name"
+    )
+    category_sales = (
+        df.dropna(subset=[category_col])
+        .groupby(category_col)["total_price"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(10)
+        .reset_index(name="revenue")
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.barplot(data=category_sales, y=category_col, x="revenue", ax=ax, color="#1f77b4")
+    ax.set_title("Top 10 Categories by Revenue")
+    ax.set_xlabel("Revenue")
+    ax.set_ylabel("Category")
+    st.pyplot(fig, clear_figure=True)
+
+
+def plot_state_sales(df: pd.DataFrame) -> None:
+    state_sales = (
+        df.dropna(subset=["customer_state"])
+        .groupby("customer_state")["total_price"]
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index(name="revenue")
+    )
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.barplot(data=state_sales, x="customer_state", y="revenue", ax=ax, color="#2ca02c")
+    ax.set_title("Revenue by Customer State")
+    ax.set_xlabel("State")
+    ax.set_ylabel("Revenue")
+    ax.tick_params(axis="x", rotation=45)
+    st.pyplot(fig, clear_figure=True)
+
+
+def plot_review_distribution(df: pd.DataFrame) -> None:
+    if "review_score" not in df.columns:
+        st.info("Review score data not available for the current filter selection.")
+        return
+
+    review_counts = (
+        df.dropna(subset=["review_score"])
+        .groupby("review_score")["order_id"]
+        .nunique()
+        .reset_index(name="orders")
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.barplot(data=review_counts, x="review_score", y="orders", ax=ax, color="#ff7f0e")
+    ax.set_title("Review Score Distribution")
+    ax.set_xlabel("Review Score")
+    ax.set_ylabel("Orders")
+    st.pyplot(fig, clear_figure=True)
+
+
+def plot_delivery_performance(df: pd.DataFrame) -> None:
+    if "diff_days" not in df.columns:
+        st.info("Delivery timing data is not available for the current filter selection.")
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(
+        df["diff_days"].dropna(), # type: ignore
+        bins=30,
+        ax=ax,
+        color="#9467bd",
+    )
+    ax.set_title("Delivery Timing (Days vs Estimate)")
+    ax.set_xlabel("Days (positive = late, negative = early)")
+    ax.set_ylabel("Orders")
+    st.pyplot(fig, clear_figure=True)
+
+
+def plot_rfm_segments(df: pd.DataFrame) -> None:
+    if "customer_segment" not in df.columns:
+        st.info("Customer segment data not available.")
+        return
+
+    segment_counts = (
+        df.dropna(subset=["customer_segment"])
+        .groupby("customer_segment")["customer_unique_id"]
+        .nunique()
+        .sort_values(ascending=False)
+        .reset_index(name="customers")
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.barplot(
+        data=segment_counts,
+        y="customer_segment",
+        x="customers",
+        ax=ax,
+        color="#8c564b",
+    )
+    ax.set_title("Customer Segments (RFM)")
+    ax.set_xlabel("Customers")
+    ax.set_ylabel("Segment")
+    st.pyplot(fig, clear_figure=True)
+
+
+def main() -> None:
+    st.set_page_config(
+        page_title="Brazilian E-commerce Dashboard",
+        layout="wide",
+    )
+
+    st.title("Brazilian E-commerce Analysis Dashboard")
+    st.caption("Interactive view of sales, logistics, reviews, and customer segments.")
+
+    try:
+        with st.spinner("Loading data..."):
+            main_df = load_main_data()
+            st.write(f"✓ Loaded main data: {len(main_df)} rows")
+            
+            sales_by_category = load_sales_by_category()
+            sales_by_state = load_sales_by_state()
+            rfm_segments = load_rfm_segments()
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return
+
+    try:
+        filtered_df = filter_main_data(main_df)
+    except Exception as e:
+        st.error(f"Error filtering data: {e}")
+        return
+
+    try:
+        total_orders = filtered_df["order_id"].nunique()
+        total_revenue = filtered_df["total_price"].sum()
+        unique_customers = filtered_df["customer_unique_id"].nunique()
+        avg_order_value = total_revenue / total_orders if total_orders else 0
+        avg_freight = filtered_df["freight_value"].mean()
+        on_time_rate = filtered_df["on_time"].mean() if "on_time" in filtered_df.columns else np.nan
+        avg_review = filtered_df["review_score"].mean() if "review_score" in filtered_df.columns else np.nan
+
+        st.write(f"📊 Data Summary: {total_orders} orders, {unique_customers} customers")
+
+        kpi_cols = st.columns(4)
+        kpi_cols[0].metric("Orders", f"{total_orders:,.0f}")
+        kpi_cols[1].metric("Revenue", f"{total_revenue:,.2f}")
+        kpi_cols[2].metric("Customers", f"{unique_customers:,.0f}")
+        kpi_cols[3].metric("Avg Order Value", f"{avg_order_value:,.2f}")
+
+        kpi_cols = st.columns(3)
+        kpi_cols[0].metric("Avg Freight", f"{avg_freight:,.2f}")
+        kpi_cols[1].metric(
+            "On-time Delivery", "N/A" if np.isnan(on_time_rate) else f"{on_time_rate:.1%}"
+        )
+        kpi_cols[2].metric(
+            "Avg Review Score", "N/A" if np.isnan(avg_review) else f"{avg_review:.2f}"
+        )
+
+        st.divider()
+
+        col_left, col_right = st.columns([2, 1])
+        with col_left:
+            plot_time_series(filtered_df)
+        with col_right:
+            plot_review_distribution(filtered_df)
+
+        st.divider()
+
+        col_left, col_right = st.columns(2)
+        with col_left:
+            plot_top_categories(filtered_df)
+        with col_right:
+            plot_state_sales(filtered_df)
+
+        st.divider()
+
+        col_left, col_right = st.columns(2)
+        with col_left:
+            plot_delivery_performance(filtered_df)
+        with col_right:
+            plot_rfm_segments(filtered_df)
+
+        st.divider()
+
+        st.subheader("Reference Tables")
+        tab1, tab2, tab3 = st.tabs(["Category Summary", "State Summary", "RFM Segments"])
+        with tab1:
+            st.dataframe(sales_by_category, width='stretch')
+        with tab2:
+            st.dataframe(sales_by_state, width='stretch')
+        with tab3:
+            st.dataframe(rfm_segments.head(2000), width='stretch')
+            st.caption("Showing first 2000 rows for performance.")
+    except Exception as e:
+        st.error(f"Error displaying dashboard: {str(e)}")
+        import traceback
+        st.write("Debug info:")
+        st.write(traceback.format_exc())
+
+if __name__ == "__main__":
+    main()
