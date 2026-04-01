@@ -131,25 +131,15 @@ Includes:
 
 ## Results and Key Insights
 
-Based on the implemented notebook analysis and dashboard metrics, the project surfaces the following business-level findings:
-
 1. Delivery reliability is a major customer-experience lever.
-   The pipeline explicitly tracks on-time versus late deliveries and delivery deviation (actual vs estimated), making logistics performance measurable.
 
 2. Category performance is not one-dimensional.
-   Categories differ across revenue, freight burden, quantity sold, shipping time, and review score, so ranking by only one metric can hide trade-offs.
 
 3. Demand is geographically concentrated.
-   Customer and revenue distributions by state/city show concentration patterns that can guide regional targeting and fulfillment strategies.
 
 4. Payment preference is concentrated in a few methods.
-   Payment-type analysis highlights dominant transaction channels, useful for payment optimization and checkout experience planning.
 
 5. Customer value is unevenly distributed.
-   RFM outputs show that high-value customers are a distinct segment, supporting segmentation-based retention and lifecycle marketing.
-
-Note:
-- Live KPI values are available in the dashboard and can change depending on filters and data slices.
 
 ## Dashboard
 
@@ -184,6 +174,28 @@ The Streamlit app has two main pages:
   - Customer segment
 - Filtered KPI refresh and chart updates.
 - Reference tabs for category, state, and RFM summary tables.
+
+## Screenshots
+
+### Dashboard Preview
+
+#### Home Page
+
+![Dashboard Home](assets/screenshots/dashboard-home.png)
+
+#### Analysis and Filters Page
+
+![Dashboard Filters](assets/screenshots/dashboard-filters.png)
+
+### Notebook Visuals
+
+#### EDA: Top Categories Example
+
+![EDA Top Categories](assets/screenshots/notebook-eda-top-categories.png)
+
+#### Geolocation Map Example
+
+![Geolocation Map](assets/screenshots/notebook-geolocation-map.png)
 
 ## Run Locally
 
