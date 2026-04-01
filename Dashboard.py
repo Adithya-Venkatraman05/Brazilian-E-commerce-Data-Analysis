@@ -89,8 +89,7 @@ def filter_main_data(df: pd.DataFrame) -> pd.DataFrame:
     if pd.isna(min_date) or pd.isna(max_date):
         return df_filtered
 
-    with st.sidebar:
-        st.header("Filters")
+    with st.expander("🔍 Filters", expanded=True):
         date_range = st.date_input("Purchase date range", (min_date, max_date))
 
         status_options = sorted(
@@ -99,7 +98,6 @@ def filter_main_data(df: pd.DataFrame) -> pd.DataFrame:
         status_selected = st.multiselect(
             "Order status",
             status_options,
-            default=status_options,
         )
 
         state_options = sorted(
@@ -108,7 +106,6 @@ def filter_main_data(df: pd.DataFrame) -> pd.DataFrame:
         state_selected = st.multiselect(
             "Customer state",
             state_options,
-            default=state_options,
         )
 
         segment_options = sorted(
@@ -117,7 +114,6 @@ def filter_main_data(df: pd.DataFrame) -> pd.DataFrame:
         segment_selected = st.multiselect(
             "Customer segment",
             segment_options,
-            default=segment_options,
         )
 
     if isinstance(date_range, tuple) and len(date_range) == 2:
@@ -269,14 +265,91 @@ def main() -> None:
         layout="wide",
     )
 
+    # Page Navigation
+    page = st.selectbox(
+        "📍 Navigation",
+        ["Home", "Analysis & Filters"],
+        index=0,
+    )
+
+    if page == "Home":
+        show_home_page()
+    else:
+        show_analysis_page()
+
+
+def show_home_page() -> None:
     st.title("Brazilian E-commerce Analysis Dashboard")
-    st.caption("Interactive view of sales, logistics, reviews, and customer segments.")
+    st.caption("Overview of the Brazilian E-commerce dataset - All Data")
 
     try:
         with st.spinner("Loading data..."):
             main_df = load_main_data()
-            st.write(f"✓ Loaded main data: {len(main_df)} rows")
-            
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return
+
+    try:
+        # Show metrics for all data (no filters)
+        total_orders = main_df["order_id"].nunique()
+        total_revenue = main_df["total_price"].sum()
+        unique_customers = main_df["customer_unique_id"].nunique()
+        avg_order_value = total_revenue / total_orders if total_orders else 0
+        avg_freight = main_df["freight_value"].mean()
+        on_time_rate = main_df["on_time"].mean() if "on_time" in main_df.columns else np.nan
+        avg_review = main_df["review_score"].mean() if "review_score" in main_df.columns else np.nan
+
+        st.subheader("📊 Key Metrics (All Data)")
+        kpi_cols = st.columns(4)
+        kpi_cols[0].metric("Total Orders", f"{total_orders:,.0f}")
+        kpi_cols[1].metric("Total Revenue", f"${total_revenue:,.2f}")
+        kpi_cols[2].metric("Unique Customers", f"{unique_customers:,.0f}")
+        kpi_cols[3].metric("Avg Order Value", f"${avg_order_value:,.2f}")
+
+        kpi_cols = st.columns(3)
+        kpi_cols[0].metric("Avg Freight Cost", f"${avg_freight:,.2f}")
+        kpi_cols[1].metric("On-time Delivery Rate", "N/A" if np.isnan(on_time_rate) else f"{on_time_rate:.1%}")
+        kpi_cols[2].metric("Avg Review Score", "N/A" if np.isnan(avg_review) else f"{avg_review:.2f}")
+
+        st.divider()
+
+        st.subheader("📈 Key Visualizations")
+        
+        with st.expander("Orders Over Time", expanded=True):
+            plot_time_series(main_df)
+
+        with st.expander("Review Score Distribution"):
+            plot_review_distribution(main_df)
+
+        with st.expander("Top 10 Categories by Revenue"):
+            plot_top_categories(main_df)
+
+        with st.expander("Revenue by Customer State"):
+            plot_state_sales(main_df)
+
+        with st.expander("Delivery Performance"):
+            plot_delivery_performance(main_df)
+
+        with st.expander("Customer Segments (RFM Analysis)"):
+            plot_rfm_segments(main_df)
+
+        st.divider()
+        st.info("💡 Go to **Analysis & Filters** page to explore the data with custom filters!")
+
+    except Exception as e:
+        st.error(f"Error displaying dashboard: {str(e)}")
+        import traceback
+        st.write("Debug info:")
+        st.write(traceback.format_exc())
+
+
+def show_analysis_page() -> None:
+    st.title("Brazilian E-commerce Analysis & Filters")
+    st.caption("Explore the data with custom filters")
+
+    try:
+        with st.spinner("Loading data..."):
+            main_df = load_main_data()
             sales_by_category = load_sales_by_category()
             sales_by_state = load_sales_by_state()
             rfm_segments = load_rfm_segments()
@@ -299,16 +372,15 @@ def main() -> None:
         on_time_rate = filtered_df["on_time"].mean() if "on_time" in filtered_df.columns else np.nan
         avg_review = filtered_df["review_score"].mean() if "review_score" in filtered_df.columns else np.nan
 
-        st.write(f"📊 Data Summary: {total_orders} orders, {unique_customers} customers")
-
+        st.subheader("📊 Filtered Data Summary")
         kpi_cols = st.columns(4)
         kpi_cols[0].metric("Orders", f"{total_orders:,.0f}")
-        kpi_cols[1].metric("Revenue", f"{total_revenue:,.2f}")
+        kpi_cols[1].metric("Revenue", f"${total_revenue:,.2f}")
         kpi_cols[2].metric("Customers", f"{unique_customers:,.0f}")
-        kpi_cols[3].metric("Avg Order Value", f"{avg_order_value:,.2f}")
+        kpi_cols[3].metric("Avg Order Value", f"${avg_order_value:,.2f}")
 
         kpi_cols = st.columns(3)
-        kpi_cols[0].metric("Avg Freight", f"{avg_freight:,.2f}")
+        kpi_cols[0].metric("Avg Freight", f"${avg_freight:,.2f}")
         kpi_cols[1].metric(
             "On-time Delivery", "N/A" if np.isnan(on_time_rate) else f"{on_time_rate:.1%}"
         )
@@ -318,27 +390,26 @@ def main() -> None:
 
         st.divider()
 
-        col_left, col_right = st.columns([2, 1])
-        with col_left:
-            plot_time_series(filtered_df)
-        with col_right:
-            plot_review_distribution(filtered_df)
+        with st.expander("📈 Orders Over Time & Review Scores"):
+            col_left, col_right = st.columns([2, 1])
+            with col_left:
+                plot_time_series(filtered_df)
+            with col_right:
+                plot_review_distribution(filtered_df)
 
-        st.divider()
+        with st.expander("📊 Top Categories & State Sales"):
+            col_left, col_right = st.columns(2)
+            with col_left:
+                plot_top_categories(filtered_df)
+            with col_right:
+                plot_state_sales(filtered_df)
 
-        col_left, col_right = st.columns(2)
-        with col_left:
-            plot_top_categories(filtered_df)
-        with col_right:
-            plot_state_sales(filtered_df)
-
-        st.divider()
-
-        col_left, col_right = st.columns(2)
-        with col_left:
-            plot_delivery_performance(filtered_df)
-        with col_right:
-            plot_rfm_segments(filtered_df)
+        with st.expander("🚚 Delivery Performance & Customer Segments"):
+            col_left, col_right = st.columns(2)
+            with col_left:
+                plot_delivery_performance(filtered_df)
+            with col_right:
+                plot_rfm_segments(filtered_df)
 
         st.divider()
 
@@ -356,6 +427,7 @@ def main() -> None:
         import traceback
         st.write("Debug info:")
         st.write(traceback.format_exc())
+
 
 if __name__ == "__main__":
     main()
