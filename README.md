@@ -2,6 +2,10 @@
 
 End-to-end analytics project built on Olist Brazilian e-commerce data, from raw-data auditing and preprocessing to business analysis and an interactive Streamlit dashboard.
 
+## Business Case
+
+This project analyzes Olist's e-commerce operations to identify revenue drivers, delivery inefficiencies, and customer satisfaction patterns.
+
 ## Why This Project Matters
 
 This project demonstrates practical analytics execution across the full lifecycle:

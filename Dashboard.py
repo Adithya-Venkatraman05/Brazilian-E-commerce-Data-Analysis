@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
+import plotly.express as px
 import streamlit as st
 
 DATA_DIR = Path(__file__).resolve().parent / "Data" / "Processed"
+BAR_COLOR = "#E36414"
+SECONDARY_COLOR = "#457B9D"
 
 
 @st.cache_data(show_spinner=False)
@@ -137,6 +138,23 @@ def filter_main_data(df: pd.DataFrame) -> pd.DataFrame:
     return df_filtered
 
 
+def style_plotly_figure(
+    fig,
+    title: str,
+    x_title: str,
+    y_title: str,
+) -> None:
+    fig.update_layout(
+        title=f"<b>{title}</b>",
+        template="plotly_white",
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(t=60, l=20, r=20, b=20),
+    )
+
+
 def plot_time_series(df: pd.DataFrame) -> None:
     monthly = (
         df.dropna(subset=["purchase_month"])
@@ -144,14 +162,20 @@ def plot_time_series(df: pd.DataFrame) -> None:
         .nunique()
         .reset_index(name="orders")
     )
+    if monthly.empty:
+        st.info("No orders available for the selected period.")
+        return
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.lineplot(data=monthly, x="purchase_month", y="orders", marker="o", ax=ax)
-    ax.set_title("Orders Over Time")
-    ax.set_xlabel("Month")
-    ax.set_ylabel("Orders")
-    ax.grid(axis="y", alpha=0.3)
-    st.pyplot(fig, clear_figure=True)
+    fig = px.line(
+        monthly,
+        x="purchase_month",
+        y="orders",
+        markers=True,
+        color_discrete_sequence=[BAR_COLOR],
+    )
+    fig.update_traces(line=dict(width=3))
+    style_plotly_figure(fig, "Orders Over Time", "Month", "Orders")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def plot_top_categories(df: pd.DataFrame) -> None:
@@ -168,13 +192,19 @@ def plot_top_categories(df: pd.DataFrame) -> None:
         .head(10)
         .reset_index(name="revenue")
     )
+    if category_sales.empty:
+        st.info("No category revenue data available for the selected filters.")
+        return
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.barplot(data=category_sales, y=category_col, x="revenue", ax=ax, color="#1f77b4")
-    ax.set_title("Top 10 Categories by Revenue")
-    ax.set_xlabel("Revenue")
-    ax.set_ylabel("Category")
-    st.pyplot(fig, clear_figure=True)
+    fig = px.bar(
+        category_sales.sort_values("revenue"),
+        x="revenue",
+        y=category_col,
+        orientation="h",
+        color_discrete_sequence=[BAR_COLOR] * len(category_sales),
+    )
+    style_plotly_figure(fig, "Top 10 Categories by Revenue", "Revenue", "Category")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def plot_state_sales(df: pd.DataFrame) -> None:
@@ -185,13 +215,19 @@ def plot_state_sales(df: pd.DataFrame) -> None:
         .sort_values(ascending=False)
         .reset_index(name="revenue")
     )
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.barplot(data=state_sales, x="customer_state", y="revenue", ax=ax, color="#2ca02c")
-    ax.set_title("Revenue by Customer State")
-    ax.set_xlabel("State")
-    ax.set_ylabel("Revenue")
-    ax.tick_params(axis="x", rotation=45)
-    st.pyplot(fig, clear_figure=True)
+    if state_sales.empty:
+        st.info("No state-level sales data available for the selected filters.")
+        return
+
+    fig = px.bar(
+        state_sales,
+        x="customer_state",
+        y="revenue",
+        color_discrete_sequence=[SECONDARY_COLOR] * len(state_sales),
+    )
+    fig.update_xaxes(categoryorder="total descending")
+    style_plotly_figure(fig, "Revenue by Customer State", "State", "Revenue")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def plot_review_distribution(df: pd.DataFrame) -> None:
@@ -205,13 +241,19 @@ def plot_review_distribution(df: pd.DataFrame) -> None:
         .nunique()
         .reset_index(name="orders")
     )
+    if review_counts.empty:
+        st.info("No review score data available for the selected filters.")
+        return
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(data=review_counts, x="review_score", y="orders", ax=ax, color="#ff7f0e")
-    ax.set_title("Review Score Distribution")
-    ax.set_xlabel("Review Score")
-    ax.set_ylabel("Orders")
-    st.pyplot(fig, clear_figure=True)
+    fig = px.bar(
+        review_counts,
+        x="review_score",
+        y="orders",
+        color_discrete_sequence=[BAR_COLOR],
+    )
+    fig.update_xaxes(dtick=1)
+    style_plotly_figure(fig, "Review Score Distribution", "Review Score", "Orders")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def plot_delivery_performance(df: pd.DataFrame) -> None:
@@ -219,17 +261,23 @@ def plot_delivery_performance(df: pd.DataFrame) -> None:
         st.info("Delivery timing data is not available for the current filter selection.")
         return
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.histplot(
-        df["diff_days"].dropna(), # type: ignore
-        bins=30,
-        ax=ax,
-        color="#9467bd",
+    diff_days = df["diff_days"].dropna()
+    if diff_days.empty:
+        st.info("No delivery timing data available for the selected filters.")
+        return
+
+    fig = px.histogram(
+        diff_days,
+        nbins=30,
+        color_discrete_sequence=[SECONDARY_COLOR],
     )
-    ax.set_title("Delivery Timing (Days vs Estimate)")
-    ax.set_xlabel("Days (positive = late, negative = early)")
-    ax.set_ylabel("Orders")
-    st.pyplot(fig, clear_figure=True)
+    style_plotly_figure(
+        fig,
+        "Delivery Timing (Days vs Estimate)",
+        "Days (positive = late, negative = early)",
+        "Orders",
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def plot_rfm_segments(df: pd.DataFrame) -> None:
@@ -244,19 +292,19 @@ def plot_rfm_segments(df: pd.DataFrame) -> None:
         .sort_values(ascending=False)
         .reset_index(name="customers")
     )
+    if segment_counts.empty:
+        st.info("No customer segment data available for the selected filters.")
+        return
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(
-        data=segment_counts,
+    fig = px.bar(
+        segment_counts.sort_values("customers"),
         y="customer_segment",
         x="customers",
-        ax=ax,
-        color="#8c564b",
+        orientation="h",
+        color_discrete_sequence=[BAR_COLOR] * len(segment_counts),
     )
-    ax.set_title("Customer Segments (RFM)")
-    ax.set_xlabel("Customers")
-    ax.set_ylabel("Segment")
-    st.pyplot(fig, clear_figure=True)
+    style_plotly_figure(fig, "Customer Segments (RFM)", "Customers", "Segment")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def main() -> None:
